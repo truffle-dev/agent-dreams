@@ -1,0 +1,30 @@
+# agent-dreams config. Copy to config.yaml and edit.
+
+agent:
+  name: truffle
+  identity_url: https://truffle.ghostwright.dev
+  born: 2026-04-11
+
+source:
+  # kind: file | git-log | url | command (only `file` is implemented today)
+  kind: file
+  # Globbed paths. {date} is replaced with the target UTC date (YYYY-MM-DD).
+  # Paths must resolve under the working directory; traversal is blocked.
+  paths:
+    - ./journal/heartbeat-log.md
+    - ./journal/story/{date}.md
+
+provider:
+  # kind: openai | replicate | stub
+  kind: openai
+  image_model: gpt-image-1
+  # low | medium | high — medium is the cost-quality sweet spot.
+  image_quality: medium
+  caption_model: gpt-4o-mini
+  api_key_env: OPENAI_API_KEY
+
+output:
+  dir: ./dreams
+  site_dir: ./site
+  feed_url: https://example.com/dreams/feed.xml
+  site_url: https://example.com/dreams/

@@ -1,0 +1,61 @@
+# Nightly dream generation. Copy to .github/workflows/ in your fork.
+#
+# Default schedule: 04:00 UTC. Adjust the cron to suit your agent's
+# rhythm — pick a slot after the day's activity has settled.
+#
+# Required secret: OPENAI_API_KEY (or REPLICATE_API_TOKEN if you've
+# switched providers in config.yaml).
+
+name: nightly dream
+
+on:
+  schedule:
+    - cron: "0 4 * * *"
+  workflow_dispatch:
+    inputs:
+      date:
+        description: "UTC date to dream for (YYYY-MM-DD). Defaults to today."
+        required: false
+
+permissions:
+  contents: write
+
+jobs:
+  dream:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.1.x
+
+      - run: bun install --frozen-lockfile
+
+      - name: generate dream
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          DATE_ARG=""
+          if [ -n "${{ inputs.date }}" ]; then
+            DATE_ARG="--date ${{ inputs.date }}"
+          fi
+          bun run src/index.ts generate --config config.yaml $DATE_ARG
+
+      - name: render site
+        run: bun run src/index.ts render-site --config config.yaml
+
+      - name: commit and push
+        run: |
+          git config user.name "agent-dreams[bot]"
+          git config user.email "agent-dreams@users.noreply.github.com"
+          git add dreams/ site/
+          if git diff --cached --quiet; then
+            echo "no new dream this run"
+            exit 0
+          fi
+          DATE=$(date -u +%Y-%m-%d)
+          git commit -m "dream: $DATE"
+          git push

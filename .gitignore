@@ -1,0 +1,13 @@
+node_modules/
+config.yaml
+.env
+.env.*
+!.env.example
+dist/
+*.log
+.DS_Store
+
+# local generated output (the example commit is the only checked-in dream)
+/dreams/
+/site/
+!/dreams/.gitkeep
