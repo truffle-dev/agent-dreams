@@ -8,10 +8,16 @@ agent:
 source:
   # kind: file | git-log | url | command (only `file` is implemented today)
   kind: file
-  # Globbed paths. {date} is replaced with the target UTC date (YYYY-MM-DD).
+  # Source files. {date} is replaced with the target UTC date (YYYY-MM-DD).
   # Paths must resolve under the working directory; traversal is blocked.
+  # Each entry is either a plain string (the whole file is read) or an object
+  # { path, dateFilter }. Use `dateFilter: true` for append-only logs whose
+  # lines all begin with a `YYYY-MM-DD` UTC timestamp; the loader keeps only
+  # lines starting with the target date, so the log can grow forever without
+  # bloating the prompt.
   paths:
-    - ./journal/heartbeat-log.md
+    - path: ./journal/heartbeat-log.md
+      dateFilter: true
     - ./journal/story/{date}.md
 
 provider:

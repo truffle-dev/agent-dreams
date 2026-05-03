@@ -6,9 +6,17 @@ export interface AgentConfig {
   born?: string;
 }
 
+/**
+ * A single source path. Either a plain string (treated as the file path) or an
+ * object with options. Use `{ path, dateFilter: true }` for append-only logs
+ * (e.g. heartbeat-log.md) where every line begins with a `YYYY-MM-DD` UTC
+ * timestamp; the loader will keep only lines that begin with the target date.
+ */
+export type SourcePath = string | { path: string; dateFilter?: boolean };
+
 export interface SourceConfig {
   kind: "file" | "git-log" | "url" | "command";
-  paths?: string[];
+  paths?: SourcePath[];
   command?: string;
 }
 

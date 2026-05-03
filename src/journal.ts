@@ -8,7 +8,7 @@
 
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import type { SourceConfig } from "./types.ts";
+import type { SourceConfig, SourcePath } from "./types.ts";
 
 export interface LoadOptions {
   /** Base directory that relative source paths resolve against. */
@@ -31,6 +31,23 @@ export interface JournalLoadResult {
 /** Substitute `{date}` into a path string. */
 export function expandPath(p: string, date: string): string {
   return p.replace(/\{date\}/g, date);
+}
+
+/** Normalize a `SourcePath` entry into its object form. */
+function normalizeSourcePath(entry: SourcePath): { path: string; dateFilter: boolean } {
+  if (typeof entry === "string") return { path: entry, dateFilter: false };
+  return { path: entry.path, dateFilter: entry.dateFilter === true };
+}
+
+/**
+ * Keep only lines that begin with the target date. Used for append-only logs
+ * where every entry is one line prefixed `YYYY-MM-DDTHH:MMZ ...`. The match is
+ * a literal `startsWith(date)`, so `2026-05-03T05:10Z ...` matches `2026-05-03`
+ * and `2026-05-30T...` does not.
+ */
+function filterLinesByDatePrefix(text: string, date: string): string {
+  const lines = text.split("\n");
+  return lines.filter((line) => line.startsWith(date)).join("\n");
 }
 
 /**
@@ -74,11 +91,13 @@ export async function loadJournal(
   const chunks: string[] = [];
   const readFiles: string[] = [];
   for (const raw of paths) {
-    const expanded = expandPath(raw, opts.date);
+    const entry = normalizeSourcePath(raw);
+    const expanded = expandPath(entry.path, opts.date);
     const abs = safeResolve(expanded, opts.baseDir, opts.absoluteAllowlist);
     try {
       const content = await fs.readFile(abs, "utf8");
-      const trimmed = content.trim();
+      const filtered = entry.dateFilter ? filterLinesByDatePrefix(content, opts.date) : content;
+      const trimmed = filtered.trim();
       if (trimmed.length > 0) {
         chunks.push(`----- ${path.basename(abs)} -----\n${trimmed}`);
         readFiles.push(abs);
