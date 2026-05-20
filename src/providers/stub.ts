@@ -22,8 +22,23 @@ const ONE_PIXEL_PNG = new Uint8Array([
   0x45, 0x4e, 0x44, 0xae, 0x42, 0x60, 0x82,
 ]);
 
+export interface StubProviderOptions {
+  /**
+   * FIFO queue of caption responses. Each `caption()` call dequeues one. When
+   * the queue is empty, falls back to deterministic text derived from the
+   * prompt. Useful for testing the scan-and-retry path in `generateDream`,
+   * which needs to control individual caption-call outputs.
+   */
+  captionResponses?: string[];
+}
+
 export class StubProvider implements DreamProvider {
   readonly name = "stub";
+  private readonly captionQueue: string[];
+
+  constructor(opts: StubProviderOptions = {}) {
+    this.captionQueue = [...(opts.captionResponses ?? [])];
+  }
 
   async generate(_prompt: string, _opts?: ImageGenerateOptions): Promise<ImageResult> {
     return {
@@ -34,6 +49,10 @@ export class StubProvider implements DreamProvider {
   }
 
   async caption(prompt: string, _opts?: CaptionGenerateOptions): Promise<CaptionResult> {
+    const next = this.captionQueue.shift();
+    if (next !== undefined) {
+      return { text: next, model: "stub-caption" };
+    }
     // Take the first ~12 words of the prompt and weave them through filler so
     // the caption lands inside the spec's 100-300 word band reliably.
     const seed = prompt.trim().split(/\s+/).slice(0, 12).join(" ") || "the dream";

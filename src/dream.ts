@@ -35,6 +35,12 @@ export interface GenerateDreamOptions {
 export interface GenerationResult {
   dream: Dream;
   daySignal: string;
+  /**
+   * Banned phrases still present in the caption after the one-retry budget
+   * is spent. Empty in the common case. Non-empty means the caption shipped
+   * with a slip, because hand-editing the artifact defeats its truthfulness.
+   */
+  warnings: string[];
 }
 
 /** Render a {{var}}-style template with the given values. */
@@ -64,6 +70,43 @@ export function deriveTitle(prompt: string): string {
 }
 
 const NO_DREAM_SENTINEL = "NO_DREAM";
+
+/**
+ * Words the dream-prompt template tells the model not to use because they
+ * signal a generic MidJourney-style surreal cliché instead of an anchored
+ * dream. Mirrored here as a post-generation check on the caption: the caption
+ * template doesn't repeat the banned list (different surface, different
+ * voice), but the same vocabulary signals the same failure mode if it lands
+ * in the caption.
+ */
+export const BANNED_CAPTION_PHRASES = [
+  "ethereal",
+  "mystical",
+  "vibrant",
+  "otherworldly",
+  "cinematic",
+] as const;
+
+/**
+ * Return the banned phrases present in a caption (case-insensitive,
+ * word-boundary). Order matches the order they appear in BANNED_CAPTION_PHRASES,
+ * deduplicated.
+ */
+export function scanCaption(
+  caption: string,
+  banned: readonly string[] = BANNED_CAPTION_PHRASES,
+): string[] {
+  const hits: string[] = [];
+  for (const phrase of banned) {
+    const re = new RegExp(`\\b${escapeRegex(phrase)}\\b`, "i");
+    if (re.test(caption)) hits.push(phrase);
+  }
+  return hits;
+}
+
+function escapeRegex(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
 
 export class NoDreamError extends Error {
   constructor() {
@@ -123,7 +166,12 @@ export async function generateDream(opts: GenerateDreamOptions): Promise<Generat
     size: "1024x1024",
   });
 
-  // 4. Caption.
+  // 4. Caption. After the first generation, scan for MidJourney-cliché words
+  // the dream-prompt explicitly bans. If any land in the caption, regenerate
+  // ONCE with the offending phrases named in the prompt so the model can
+  // route around them. One retry is the whole budget. Hand-editing the
+  // caption defeats the artifact's truthfulness, so we ship attempt two
+  // either way and let the caller see the slip via `warnings`.
   const captionTemplate = await fs.readFile(path.join(templatesDir, "caption-prompt.md"), "utf8");
   const renderedCaptionPrompt = renderTemplate(captionTemplate, {
     agent_name: config.agent.name,
@@ -131,9 +179,21 @@ export async function generateDream(opts: GenerateDreamOptions): Promise<Generat
     dream_prompt: imagePrompt,
     day_signal_excerpt: journal.text.slice(0, 2000),
   });
-  const captionRes = await provider.caption(renderedCaptionPrompt, {
+  let captionRes = await provider.caption(renderedCaptionPrompt, {
     model: config.provider.caption_model,
   });
+  let warnings = scanCaption(captionRes.text);
+  if (warnings.length > 0) {
+    const addendum =
+      `\n\nAdditional constraint for this regeneration: the previous attempt used ` +
+      `the word${warnings.length === 1 ? "" : "s"} ${warnings.map((w) => `"${w}"`).join(", ")}. ` +
+      `These signal generic surrealism. Write the caption without them.`;
+    const retryPrompt = renderedCaptionPrompt + addendum;
+    captionRes = await provider.caption(retryPrompt, {
+      model: config.provider.caption_model,
+    });
+    warnings = scanCaption(captionRes.text);
+  }
 
   // 5. Write to disk.
   const outDir = path.resolve(baseDir, config.output.dir);
@@ -169,6 +229,7 @@ export async function generateDream(opts: GenerateDreamOptions): Promise<Generat
       metaPath,
     },
     daySignal: journal.text,
+    warnings,
   };
 }
 

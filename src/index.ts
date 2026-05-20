@@ -152,6 +152,13 @@ async function cmdGenerate(args: ParsedArgs): Promise<number> {
     console.log(`image:   ${result.dream.imagePath}`);
     console.log(`caption: ${result.dream.metaPath}`);
     console.log(`title:   ${result.dream.meta.title}`);
+    if (result.warnings.length > 0) {
+      console.warn(
+        `warning: caption shipped with banned phrase(s): ${result.warnings.join(", ")}. ` +
+        `One retry was attempted and the phrase(s) survived. Hand-editing defeats ` +
+        `the artifact's truthfulness; the dream stands as generated.`,
+      );
+    }
     return 0;
   } catch (err) {
     if (err instanceof EmptyJournalError) {
